@@ -3,8 +3,28 @@
 #include <fstream>
 #include <fmt/ranges.h>
 #include <cstdlib>
+#include <binsparse/binsparse.h>
 
+#include <concepts>
 #include <chrono>
+
+template <typename T>
+struct convert_to_cpp_fp {
+  using type = T;
+};
+
+template <>
+struct convert_to_cpp_fp<_Complex float> {
+  using type = std::complex<float>;
+};
+
+template <>
+struct convert_to_cpp_fp<_Complex double> {
+  using type = std::complex<double>;
+};
+
+template <typename T>
+using convert_to_cpp_fp_t = typename convert_to_cpp_fp<T>::type;
 
 double gettime() {
   struct timespec time;
@@ -60,12 +80,28 @@ int main(int argc, char** argv) {
 
   char* binsparse_file = argv[2];
 
+  bsp_matrix_t mat = bsp_read_matrix(binsparse_file, NULL);
+
+  assert(mat.values.size != 0);
+  assert(mat.indices_0.size != 0);
+
+  auto value_ptr = binsparse::__detail::get_typed_ptr(mat.values);
+  auto index_ptr = binsparse::__detail::get_typed_ptr(mat.indices_0);
+
   int num_threads = 1;
   if (argc >= 4) {
     num_threads = std::atoi(argv[3]);
   }
 
-  benchmark_fastmm_read<float, int64_t>(file_name, num_threads);
+  std::visit([&](auto* v, auto* i) {
+    using T = std::remove_pointer_t<decltype(v)>;
+    using I = std::remove_pointer_t<decltype(i)>;
+
+    using T_ = convert_to_cpp_fp_t<T>;
+    if constexpr(std::integral<I>) {
+      benchmark_fastmm_read<T_, I>(file_name, num_threads);
+    }
+  }, value_ptr, index_ptr);
 
   return 0;
 }
