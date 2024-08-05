@@ -23,7 +23,7 @@ FetchContent_MakeAvailable(fmt)
 FetchContent_Declare(
         binsparse-rc
         GIT_REPOSITORY https://github.com/GraphBLAS/binsparse-reference-c.git
-        GIT_TAG cpp-fixes
+        GIT_TAG main
         GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(binsparse-rc)
