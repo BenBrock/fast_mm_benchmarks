@@ -4,4 +4,6 @@ function(add_example example_name)
 endfunction()
 
 add_example(benchmark_read)
+add_example(benchmark_write)
+add_example(write_verify)
 

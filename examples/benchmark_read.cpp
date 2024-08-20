@@ -8,6 +8,20 @@
 #include <concepts>
 #include <chrono>
 
+#include <unistd.h>
+
+void flush_cache() {
+#ifdef __APPLE__
+  system("bash -c \"sync && sudo purge\"");
+#elif __linux__
+  system("bash -c \"sync\" && sudo sh -c \"/usr/bin/echo 3 > "
+         "/proc/sys/vm/drop_caches\"");
+#else
+  static_assert(false);
+#endif
+  usleep(100000);
+}
+
 template <typename T>
 struct convert_to_cpp_fp {
   using type = T;
@@ -40,7 +54,7 @@ struct triplet_matrix {
 };
 
 template <typename T, typename I>
-void benchmark_fastmm_read(const std::string& file_name, int num_threads) {
+void benchmark_fastmm_read(const std::string& file_name, int num_threads, bool print = true) {
   bool multi_threaded = false;
   if (num_threads > 1) {
     multi_threaded = true;
@@ -88,10 +102,15 @@ int main(int argc, char** argv) {
   auto value_ptr = binsparse::__detail::get_typed_ptr(mat.values);
   auto index_ptr = binsparse::__detail::get_typed_ptr(mat.indices_0);
 
+  bsp_destroy_matrix_t(mat);
+
   int num_threads = 1;
   if (argc >= 4) {
     num_threads = std::atoi(argv[3]);
   }
+
+  size_t num_trials = 10;
+  bool cold_cache = false;
 
   std::visit([&](auto* v, auto* i) {
     using T = std::remove_pointer_t<decltype(v)>;
@@ -99,7 +118,17 @@ int main(int argc, char** argv) {
 
     using T_ = convert_to_cpp_fp_t<T>;
     if constexpr(std::integral<I>) {
-      benchmark_fastmm_read<T_, I>(file_name, num_threads);
+      // If warm cache, perform a warm-up read.
+      if (!cold_cache) {
+        benchmark_fastmm_read<T_, I>(file_name, num_threads, false);
+      }
+      for (size_t i = 0; i < num_trials; i++) {
+        // If cold cache, wipe filesystem cache before every experiment.
+        if (cold_cache) {
+          flush_cache();
+        }
+        benchmark_fastmm_read<T_, I>(file_name, num_threads);
+      }
     }
   }, value_ptr, index_ptr);
 
